@@ -52,3 +52,31 @@ Date: 2026-11-18. Unit: `reference-deployment`.
 | 3 | A reader can follow the chain from vision to the running task | In place: `aidlc-docs/`, then the commit, the image tag and the task definition |
 | 4 | A second engineer can reproduce it from `docs/prerequisites.md` | Documented in `docs/prerequisites.md` and `docs/deploy.md`. Not yet proven by a second engineer. |
 | 5 | Teardown is verified | Pending: L2.7 and L2.8 |
+
+## Live Results (added 2026-11-18, after the stage gate)
+| Test | Result | Evidence |
+|---|---|---|
+| L2.1 Pull-request checks | **Not run.** The user chose to push straight to `main`. | none |
+| L2.2 First deploy | Pass on attempt 2. Attempt 1 failed because the policy lacked `ecr:BatchGetImage`; policy v3 fixed it. | run 44344921218 |
+| L2.3 Operator `curl` | Pass: fixed response received | user, 2026-11-18 |
+| L2.4 Others refused | Pass | runs 44344921218, 44348722672 |
+| L2.5 Re-run the same commit | Pass: build skipped, no changes | run 44348722672 |
+| L2.6 Masking | **Partly met.** The account id appears in the `role-to-assume` echo. The user accepted this. | all run logs |
+| L2.7 Destroy | Pass: 17 destroyed. The first run's verification step had a design bug, now fixed with a `-destroy` plan. The re-run passed. | runs 44348971318, 44349622037 |
+| L2.8 Hand-made removal | **Deferred by the user** | none |
+| Image scan summary | **Not working** (non-gating; see security tests) | run 44344921218 |
+
+Changes made to the hand-made deploy policy during the live run, with user approval:
+- **v2:** `TagRole`/`UntagRole` limited to the `project` tag key; `ecs:DeleteTaskDefinitions` for the `aidlc-demo` family; `tag:GetResources`.
+- **v3:** `ecr:BatchGetImage` and `ecr:GetDownloadUrlForLayer` on `repository/aidlc-demo*`.
+
+v1 and v2 are kept as non-default versions.
+
+### Success criteria, updated
+| # | Criterion | Status |
+|---|---|---|
+| 1 | Every stage approved and recorded in `audit.md` | Met |
+| 2 | The service answers after a GitHub Actions deployment | **Met** (L2.2, L2.3) |
+| 3 | A reader can follow the chain from vision to the running task | Met: `aidlc-docs`, then commit `fc9bffa`, then image tag, then task definition |
+| 4 | A second engineer can reproduce it | Documented. Not yet proven by a second engineer. `docs/prerequisites.md` now includes the policy fixes found live. |
+| 5 | Teardown is verified | Terraform-managed resources: **met**. Hand-made resources: **pending** (L2.8). |

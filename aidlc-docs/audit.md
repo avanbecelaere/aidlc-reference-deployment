@@ -258,3 +258,16 @@ Hello from aidlc-demo: deployed through GitHub Actions by an AI-DLC workflow."
 **Context**: Post-AI-DLC step 4
 
 ---
+## Post-workflow - Destroy Re-run Passed; Account-id Exposure Found
+**Timestamp**: 2026-11-18T16:40:04Z
+**AI Response**: "Pushed 2c9bd3a to main. Destroy run https://github.com/avanbecelaere/aidlc-reference-deployment/actions/runs/44349622037 passed: destroy no-op, no inactive task definitions, 'terraform plan -destroy -detailed-exitcode' reported No changes (L2.7 verification now proven). Tag query still lists stale ECS/EC2 entries (verified absent directly) and the hand-made state bucket. FINDING: NFR-2 is NOT met. configure-aws-credentials echoes its 'role-to-assume' input (from vars.AWS_DEPLOY_ROLE_ARN, which GitHub never masks) before any masking step can run, so the account id appears in plain text in every deploy/destroy run log and in prior verify-oidc runs; Actions logs are public on this repository. Cannot be fixed while the ARN is a repository variable (user constraint 3). Stopped to ask: move AWS_DEPLOY_ROLE_ARN to a secret and/or delete affected run logs; and confirmation before removing hand-made resources."
+**Context**: Post-AI-DLC step 4; awaiting user decisions
+
+---
+## Post-workflow - User Decisions on Log Exposure and Teardown
+**Timestamp**: 2026-11-18T16:41:13Z
+**User Input**: "Log exposure: Accept as is" ; "Teardown: Not yet"
+**AI Response**: "Recorded NFR-2 as partly met (account id visible once per run via role-to-assume echo; accepted by user since constraint 2 covers tracked files). Hand-made resources (deploy role, aidlc-demo-deploy v1-v3, aidlc-demo-task-boundary, state bucket, OIDC provider, repo variables and OPERATOR_CIDR secret) left in place at user's direction; removal per docs/prerequisites.md, Removal, remains outstanding (L2.8). Updated requirements NFR-2, security-test-instructions.md and build-and-test-summary.md with live results."
+**Context**: Post-AI-DLC; run complete pending hand-made removal
+
+---

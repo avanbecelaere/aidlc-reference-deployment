@@ -109,7 +109,7 @@ Source of answers: `requirement-verification-questions.md`. All 17 questions are
 | ID | Requirement | Source |
 |---|---|---|
 | NFR-1 | No account id, bucket name, role ARN or operator IP in any tracked file | Constraint 2, Q5 |
-| NFR-2 | Account id and operator IP are masked in Actions logs | Q4, Q5 |
+| NFR-2 | Account id and operator IP are masked in Actions logs. **Only partly met (found live 2026-11-18):** the operator IP and the account id in later steps are masked, but `configure-aws-credentials` echoes `role-to-assume` from the unmasked repository variable `AWS_DEPLOY_ROLE_ARN`, so every run log shows the account id once. Accepted by the user, because constraint 2 covers tracked files only. The fix would be to make the ARN a secret. | Q4, Q5 |
 | NFR-3 | Ingress is never `0.0.0.0/0`. Enforced by variable validation. | Vision §3, §7 |
 | NFR-4 | Third-party actions and the base image are pinned (commit SHA, image digest) | Constraint 3, Q6 |
 | NFR-5 | Container runs as non-root | Q6 |
