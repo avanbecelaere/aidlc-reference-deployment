@@ -1,0 +1,121 @@
+# .gitignore for an AI-DLC reference deployment: Terraform, a container image,
+# and a GitHub Actions workflow, run through AI-DLC v1 in Claude Code.
+#
+# This repository is a handover artifact, so the comments explain WHY rather than
+# just WHAT. Two things are deliberately NOT ignored; see the end of the file.
+
+# ---------------------------------------------------------------------------
+# Terraform state. The important one.
+# ---------------------------------------------------------------------------
+# State records every attribute of every resource, including values marked
+# sensitive, in PLAINTEXT. Committing it once puts it in history permanently.
+# This project keeps state in S3 instead, but a local apply or a failed init can
+# still drop these files here.
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+terraform.tfstate.d/
+
+# Crash logs can contain the same state values.
+crash.log
+crash.*.log
+
+# ---------------------------------------------------------------------------
+# Terraform local inputs and working files
+# ---------------------------------------------------------------------------
+# Variable files carry account ids, bucket names and role ARNs, and are where a
+# secret ends up when someone is in a hurry. The example file IS tracked, because
+# a reader reproducing this needs to know which variables to supply.
+*.tfvars
+*.tfvars.json
+!example.tfvars
+!*.tfvars.example
+
+# Provider binaries and module cache. Large, platform-specific, re-fetchable.
+.terraform/
+
+# Saved plans are binary, can embed sensitive values, and are only valid against
+# the state they were generated from.
+*.tfplan
+tfplan
+plan.out
+
+# Local CLI config and local overrides. These silently change what applies, so a
+# committed one would mean the repo does something different on your machine than
+# on anyone else's.
+.terraformrc
+terraform.rc
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# ---------------------------------------------------------------------------
+# Credentials and secrets
+# ---------------------------------------------------------------------------
+# Nothing here should ever be needed: the deployment authenticates through
+# federation, with no long-lived key to store. These entries exist to catch the
+# accident, not to support a workflow.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials
+.aws/
+
+# ---------------------------------------------------------------------------
+# Claude Code
+# ---------------------------------------------------------------------------
+# Local-only settings, per the AI-DLC project's own version control guidance.
+# Note CLAUDE.md and .aidlc-rule-details/ are tracked; see the end of this file.
+.claude/settings.local.json
+
+# ---------------------------------------------------------------------------
+# One operator's concrete values
+# ---------------------------------------------------------------------------
+# docs/prerequisites.md is a template using <ACCOUNT_ID> placeholders so a reader
+# can follow it with their own account. The filled-in version stays local.
+# Account ids are not secrets, but this repository is handed to a customer and a
+# partner, and neither needs to learn which account the demonstration ran in.
+local-values.md
+
+# ---------------------------------------------------------------------------
+# Cross-platform editor and OS noise
+# ---------------------------------------------------------------------------
+# Included although this is built on Linux, because the repository is handed to
+# others who may be on macOS or Windows.
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/
+
+# GitHub CLI writes a device identifier under here when its state directory
+# resolves relative to the working tree. Local tool artifact, not project content.
+.local/
+
+# ---------------------------------------------------------------------------
+# NOT ignored, on purpose
+# ---------------------------------------------------------------------------
+# aidlc-docs/
+#   AI-DLC's own output: the stage artifacts, aidlc-state.md, and audit.md. This
+#   is the record of which human approved which stage, and it is the evidence
+#   that the process actually ran. Ignoring it would delete the point of the
+#   exercise. It is committed.
+#
+# CLAUDE.md and .aidlc-rule-details/
+#   The AI-DLC v1 rules themselves. Committed so the workflow travels with the
+#   repository and anyone cloning it gets the same behaviour, which is what the
+#   AI-DLC project recommends.
+#
+# .terraform.lock.hcl
+#   The provider dependency lock. Committed deliberately: without it, a later
+#   clone resolves different provider versions and can produce a different
+#   result from the same code.
+#
+# Language-specific build artifacts
+#   Not listed yet because the application's language is chosen during the
+#   AI-DLC run, not before it. Add them once the stack exists, rather than
+#   pasting in ignores for languages this project does not use.
