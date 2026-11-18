@@ -1,228 +1,135 @@
 # Prerequisites
 
-Status: **partly filled. Two values outstanding (AWS account id, GitHub
-repository). Policies drafted but not reviewed.**
-Date: 2026-11-17
+Created once, by hand, before any Terraform is applied. Not authored in
+Terraform, and **not removed by `terraform destroy`**.
 
-Everything here is done **once, by hand, by whoever owns the AWS account**, before
-any Terraform in this repository is applied. It is deliberately not authored in
-Terraform. See `docs/vision.md` section 3 for why.
+**Attendees need to bring nothing.** No backlog item, repository access,
+credentials, environment, or preparation.
 
----
+Copy `local-values.template.md` to `local-values.md` and fill it in as you go.
+That file is gitignored.
 
-## Nothing is required from the audience
-
-**If you are attending the demonstration, you need to bring nothing.** No backlog
-item, no repository access, no credentials, no environment, and no preparation.
-The deployment runs entirely in an AWS-owned account.
+> The security governance review normally required for IAM work has not been run
+> on these policies. Review them before applying.
 
 ---
 
-## Governance note, read before filling this in
+## You need
 
-The steps below create a federated trust relationship and an IAM role. The usual
-security governance check for credential and IAM work **was not run** while
-drafting this skeleton, because the tooling for it was unavailable in the
-authoring session.
+- [ ] An AWS account you can create and destroy resources in
+- [ ] Credentials able to create IAM providers, IAM roles, and S3 buckets
+- [ ] A GitHub repository with this code, and admin on it
+- [ ] Terraform (1.10 or later, for S3 native state locking)
+- [ ] Docker, or a CI runner that provides it
+- [ ] A region and a project tag chosen
 
-Treat every policy document below as a draft requiring review before it is
-applied. The constraints called out are necessary, not sufficient.
+```bash
+export AWS_REGION=<REGION>
+export ACCOUNT_ID=<ACCOUNT_ID>
+export PROJECT=<PROJECT_TAG>
+export BUCKET="${PROJECT}-tfstate-${ACCOUNT_ID}"
+export ROLE_NAME="${PROJECT}-github-deploy"
+export GH_OWNER=<OWNER>
+export GH_REPO=<REPO>
+export OIDC_ARN="arn:aws:iam::${ACCOUNT_ID}:oidc-provider/token.actions.githubusercontent.com"
+```
 
----
+## Container architecture
 
-## Still needed before any of this can be completed
+Decide before the first build. The two halves must agree.
 
-Two things are unknown and only you can supply them. Everything else below is
-either filled in or proposed.
+| Build on | Task definition runtime platform |
+|---|---|
+| CI (`ubuntu-latest`, x86_64) | `X86_64` |
+| An arm64 workstation | `ARM64`, or build with `--platform linux/amd64` |
 
-1. **Which AWS account.** There are no credentials on the default profile
-   (`aws sts get-caller-identity` returns `NoCredentials`), and `~/.aws/config`
-   holds nineteen profiles with no obvious name for this one. The account id is
-   needed for the state bucket name, the identity provider ARN and the role ARN.
-2. **The GitHub repository.** This repo has no remote configured yet, so the
-   owner and repository name are unknown. Both appear in the trust policy's
-   `sub` condition, which cannot be written without them.
+State it explicitly in the task definition. A default that matches your machine
+but not your reader's is the failure everyone who copies you will hit.
 
-Values marked **proposed** below are my suggestion, not a decision. Change them
-freely; they only need to be consistent with each other.
+- [ ] Choice recorded in `local-values.md`
 
-`<ACCOUNT_ID>` appears as a placeholder throughout, so this document stays a
-template a reader can follow with their own account. If you are the operator, keep
-your filled-in values in a local, untracked file rather than editing them in here.
+## Pre-flight, read-only
 
----
+```bash
+aws sts get-caller-identity
+aws ec2 describe-availability-zones \
+  --query 'AvailabilityZones[?State==`available`].ZoneName'
+aws ec2 describe-vpcs --query 'length(Vpcs)'   # default quota is 5 per region
+aws iam list-open-id-connect-providers          # reuse one if present
+```
 
-## What the operator needs
+## 1. State bucket
 
-- [ ] An AWS account they own and can safely create and destroy resources in.
-      Account id: `TODO`
-- [ ] Credentials for that account with permission to create IAM identity
-      providers, IAM roles, and S3 buckets
-- [ ] A GitHub repository holding this code, and admin on it: `<OWNER>/<REPO>`
-- [x] Terraform installed locally. Version in use: **1.16.3** (linux_arm64)
-- [ ] A region chosen and recorded: **proposed `us-west-2`**
-- [ ] A single project tag chosen and recorded, used on every resource so teardown
-      can be verified by tag query: **proposed `project = aidlc-demo`**
-- [x] A container build tool. Docker 25.0.18 is present and its daemon is
-      reachable. See the architecture note below, which matters more than the
-      version does.
+```bash
+aws s3api create-bucket --bucket "$BUCKET" --region "$AWS_REGION" \
+  --create-bucket-configuration LocationConstraint="$AWS_REGION"
 
----
+aws s3api put-public-access-block --bucket "$BUCKET" \
+  --public-access-block-configuration \
+    BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
 
-## Container architecture, decide before the first build
+aws s3api put-bucket-versioning --bucket "$BUCKET" \
+  --versioning-configuration Status=Enabled
 
-This workstation is `aarch64`, and its Docker is ARM too. **ECS Fargate defaults
-its runtime platform to X86_64.** A locally built image therefore runs on an
-architecture the task definition does not expect, and the task fails to start
-with an exec format error, which reads like a corrupt image rather than an
-architecture mismatch.
+aws s3api put-bucket-encryption --bucket "$BUCKET" \
+  --server-side-encryption-configuration \
+    '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"},"BucketKeyEnabled":true}]}'
 
-Pick one and write it down, because the two halves have to agree:
+aws s3api put-bucket-tagging --bucket "$BUCKET" \
+  --tagging "TagSet=[{Key=project,Value=$PROJECT}]"
+```
 
-| Option | Build | Task definition |
-|---|---|---|
-| **Build in CI (recommended)** | GitHub Actions `ubuntu-latest` runners are x86_64, so the image is amd64 with no extra work | runtime platform `X86_64` |
-| Build locally | `docker build --platform linux/amd64`, which runs under emulation and is slow | runtime platform `X86_64` |
-| Go ARM throughout | needs an ARM runner or `buildx` with QEMU in CI | runtime platform `ARM64` |
+Omit `LocationConstraint` in `us-east-1`, where passing it fails. Versioning is
+not optional: state records every resource attribute in plaintext, including
+values marked sensitive.
 
-- [ ] Option chosen: **proposed build in CI, task definition X86_64**
-- [ ] The task definition states its runtime platform **explicitly**, rather than
-      relying on the default
-
-Stating the platform explicitly is the point, not a formality. A default that
-happens to differ from the machine you build on is exactly the kind of thing that
-works for the person who set it up and fails for everyone who copies it. The
-audience will copy it.
-
-This is also an argument for building in CI rather than locally, independent of
-the demonstration: it is the only option where the architecture is right without
-anyone having to remember a flag.
-
----
-
-## Step 1: Terraform state bucket
-
-Created by hand because Terraform cannot hold the state of the bucket its own
-state lives in without a second state to track it.
-
-- [ ] Create a private S3 bucket. Name: **proposed
-      `aidlc-demo-tfstate-<ACCOUNT_ID>`** (S3 bucket names are globally unique, so
-      the account id suffix avoids a collision with someone else's)
-- [ ] Block all public access
-- [ ] Enable versioning, so a corrupted state can be rolled back
-- [ ] Enable default encryption
-- [ ] Apply the project tag
-- [ ] Record the backend configuration used by the root module:
+Backend block for the root module:
 
 ```hcl
-# Terraform 1.16.3 is in use, confirmed locally. Native S3 state locking landed
-# in 1.10, so use_lockfile works and there is NO separate DynamoDB lock table to
-# create. Older guidance that tells you to make one does not apply here.
 terraform {
   backend "s3" {
-    bucket       = "aidlc-demo-tfstate-<ACCOUNT_ID>"
-    key          = "aidlc-demo/terraform.tfstate"
-    region       = "us-west-2"
+    bucket       = "<BUCKET>"
+    key          = "<PROJECT_TAG>/terraform.tfstate"
+    region       = "<REGION>"
     encrypt      = true
     use_lockfile = true
   }
 }
 ```
 
----
+- [ ] Bucket created, private, versioned, encrypted
 
-## Step 2: GitHub OIDC identity provider
-
-One per account. If the account already has one for
-`token.actions.githubusercontent.com`, reuse it rather than creating a second.
-Check first, read-only:
+## 2. OIDC identity provider
 
 ```bash
-aws iam list-open-id-connect-providers
+aws iam create-open-id-connect-provider \
+  --url https://token.actions.githubusercontent.com \
+  --client-id-list sts.amazonaws.com \
+  --tags Key=project,Value="$PROJECT"
 ```
 
-- [ ] Create an IAM OIDC identity provider
-- [ ] Provider URL: `https://token.actions.githubusercontent.com`
-- [ ] Audience: `sts.amazonaws.com`
+No thumbprint. It is optional in current CLI versions, and hardcoded ones from
+older guides expire.
 
-A thumbprint is no longer required for GitHub as an identity provider, following
-an AWS change; older tutorials still include a hardcoded one and those values go
-stale. See the [AWS and GitHub OIDC notes](https://github.com/hassaku63/aws-github-oidc-no-use-thumbprint-test).
+- [ ] Provider created or reused
 
-- [ ] Record the provider ARN. It is deterministic once you know the account id:
-      `arn:aws:iam::<ACCOUNT_ID>:oidc-provider/token.actions.githubusercontent.com`
+## 3. Deploy role
 
----
-
-## Step 3: The deployment role and its trust policy
-
-**This is the security boundary of the whole setup.** AWS's own guidance is that
-if the `sub` condition is not narrowed to your organisation or repository, then
-workflows outside your control can assume the role. Pin it to one repository and,
-where possible, one branch or environment. Content paraphrased from
-[GitHub Actions to AWS OIDC federation guidance](https://nhimg.org/how-to-federate-github-actions-to-aws).
-
-- [ ] Create a role. Name: **proposed `aidlc-demo-github-deploy`**
-- [ ] Apply the project tag
-- [ ] Trust policy, filled in from this skeleton:
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Federated": "arn:aws:iam::<ACCOUNT_ID>:oidc-provider/token.actions.githubusercontent.com"
-      },
-      "Action": "sts:AssumeRoleWithWebIdentity",
-      "Condition": {
-        "StringEquals": {
-          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
-        },
-        "StringEquals": {
-          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-          "token.actions.githubusercontent.com:sub": "<THE OBSERVED SUB VALUE>"
-        }
-      }
-    }
-  ]
-}
-```
-
-### The `sub` claim, which has two shapes
-
-**Do not write this condition from an example. Observe the claim your repository
-actually sends, then pin it.** The shape changed, and most tutorials show the old
-one.
-
-The older shape, which many guides still show:
+**Do not copy a `sub` value from any example, including this one.** The claim has
+two shapes:
 
 ```
-repo:OWNER/REPO:ref:refs/heads/BRANCH
+repo:OWNER/REPO:ref:refs/heads/BRANCH                      older
+repo:OWNER@OWNER_ID/REPO@REPO_ID:ref:refs/heads/BRANCH     newer
 ```
 
-The newer shape, **confirmed by direct observation on a repository created
-2026-11-18**, which embeds the numeric owner and repository ids with `@`
-separators:
+A policy in the wrong shape fails with `AccessDenied`, "Not authorized to perform
+sts:AssumeRoleWithWebIdentity", naming no condition. A trailing wildcard does not
+help: the mismatch is early in the string, at `OWNER@` where the pattern expects
+`OWNER/`.
 
-```
-repo:OWNER@OWNER_ID/REPO@REPO_ID:ref:refs/heads/BRANCH
-```
-
-A condition written in the old shape cannot match the new one, and the reason is
-worth understanding rather than memorising: the mismatch happens **early in the
-string**, at `OWNER@` where the pattern expects `OWNER/`. A trailing wildcard
-only covers the tail, so `repo:OWNER/REPO:*` fails just as surely as a fully
-pinned value does. The wildcard looks like insurance and provides none.
-
-The failure is `AccessDenied`, "Not authorized to perform
-sts:AssumeRoleWithWebIdentity", naming no condition. It is indistinguishable from
-a wrong audience, a missing identity provider, or a typo.
-
-### Find the real value instead of guessing
-
-CloudTrail records failed attempts, including the subject that was rejected:
+Create the role, run the workflow once, read the rejected subject from CloudTrail,
+then pin it:
 
 ```bash
 aws cloudtrail lookup-events \
@@ -230,69 +137,87 @@ aws cloudtrail lookup-events \
   --max-results 10 --query 'Events[].CloudTrailEvent' --output text
 ```
 
-Read `userIdentity.userName`. That is the `sub` the token carried. Prefer this to
-printing claims inside the workflow, because a public repository's build logs are
-readable by anyone.
+Read `userIdentity.userName`. Prefer this to printing claims in a workflow, whose
+logs are public on a public repository.
 
-Then pin it:
+```bash
+cat > /tmp/trust-policy.json <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Principal": { "Federated": "$OIDC_ARN" },
+    "Action": "sts:AssumeRoleWithWebIdentity",
+    "Condition": { "StringEquals": {
+      "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+      "token.actions.githubusercontent.com:sub": "<OBSERVED_SUB>"
+    }}
+  }]
+}
+EOF
 
-```json
-        "StringEquals": {
-          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-          "token.actions.githubusercontent.com:sub": "<THE OBSERVED VALUE>"
-        }
+aws iam create-role --role-name "$ROLE_NAME" \
+  --assume-role-policy-document file:///tmp/trust-policy.json \
+  --max-session-duration 3600 \
+  --tags Key=project,Value="$PROJECT"
+
+# After observing the real subject
+aws iam update-assume-role-policy --role-name "$ROLE_NAME" \
+  --policy-document file:///tmp/trust-policy.json
 ```
 
-- [ ] Observed `sub` recorded: `TODO`
-- [ ] Pinned with `StringEquals`, not a wildcard
+Pinning the whole subject pins the branch and, in the newer shape, the numeric
+ids, which are never reissued. Never write `repo:OWNER/*`.
 
-Pinning the whole value also pins the branch, which is what you want. It excludes
-pull requests, whose subject differs, and that matters most on a **public**
-repository where anyone can open one.
+- [ ] Observed subject recorded in `local-values.md`
+- [ ] Pinned with `StringEquals`, no wildcard
 
-**Never** write `repo:OWNER/*` or anything broader. That grants every repository
-belonging to that owner.
+## 4. Role permissions
 
-### A side benefit of the newer shape
+Scope by service and name prefix. Expect to iterate: Terraform reports each
+missing action as an `AccessDenied` naming the API.
 
-Because the numeric ids are part of the subject, pinning the whole subject pins
-them too, and that is stronger than a name-based condition. Ids are never
-reissued, so a repository later created with the same name by someone else cannot
-match your policy, and a rename of yours breaks it loudly rather than silently
-transferring trust.
+Two statements are mandatory, whatever else you grant:
 
-If your repository sends the older shape instead, consider adding the
-`repository_id` and `repository_owner_id` claims as separate conditions to get the
-same property. Confirm they are present in the token first: a condition naming a
-claim the token does not carry denies every request, and looks identical to every
-other trust policy failure.
+```json
+{
+  "Sid": "TaskRolesWithinBoundary",
+  "Effect": "Allow",
+  "Action": ["iam:CreateRole","iam:DeleteRole","iam:TagRole","iam:UntagRole",
+             "iam:AttachRolePolicy","iam:DetachRolePolicy",
+             "iam:PutRolePolicy","iam:DeleteRolePolicy"],
+  "Resource": "arn:aws:iam::<ACCOUNT_ID>:role/<PROJECT_TAG>-task-*",
+  "Condition": { "StringEquals": { "iam:PermissionsBoundary": "<BOUNDARY_ARN>" } }
+},
+{
+  "Sid": "PassOnlyTaskRolesToEcs",
+  "Effect": "Allow",
+  "Action": "iam:PassRole",
+  "Resource": "arn:aws:iam::<ACCOUNT_ID>:role/<PROJECT_TAG>-task-*",
+  "Condition": { "StringEquals": { "iam:PassedToService": "ecs-tasks.amazonaws.com" } }
+}
+```
 
----
+Without the boundary condition, a role that can create roles can create one more
+privileged than itself. Without the `PassedToService` condition, an unconstrained
+`PassRole` lets the holder become anything.
 
-## Step 4: What the role is allowed to do
+Never attach an administrator policy.
 
-- [ ] Attach a permissions policy scoped to what this deployment actually creates
-- [ ] Record the policy or its ARN: `TODO`
+- [ ] Policy attached, and both conditions present
 
-Constraints:
+## 5. GitHub repository
 
-- **No blanket administrative policy.** It is the fastest route to a working demo
-  and leaves a role in a live account that can do anything.
-- Terraform here creates container registry, ECS, networking and IAM resources, so
-  the policy is necessarily broad. Broad is not the same as unlimited. Write down
-  which services it covers and why.
-- The role needs read and write on the state bucket and its state key, and nothing
-  else in S3.
-- Granting the role the ability to modify IAM broadly lets it escalate its own
-  privileges. If IAM actions are needed, scope them by resource path or
-  permissions boundary rather than granting them outright.
+```bash
+gh variable set AWS_DEPLOY_ROLE_ARN \
+  --body "arn:aws:iam::${ACCOUNT_ID}:role/${ROLE_NAME}" \
+  --repo "${GH_OWNER}/${GH_REPO}"
+gh variable set AWS_REGION --body "$AWS_REGION" --repo "${GH_OWNER}/${GH_REPO}"
+```
 
----
+A variable, not a secret. A role ARN is an identifier.
 
-## Step 5: GitHub repository configuration
-
-- [ ] The workflow requests the token. Without this the job gets no OIDC token at
-      all and the failure looks like a credentials problem:
+Every workflow assuming the role needs:
 
 ```yaml
 permissions:
@@ -300,42 +225,48 @@ permissions:
   contents: read
 ```
 
-- [ ] Record the role ARN where the workflow can read it, as a repository variable
-      rather than a secret, since a role ARN is not sensitive: `TODO`
-- [ ] Decide whether apply is gated behind a GitHub environment with required
-      reviewers. If so, the trust policy condition should name that environment.
-      Decision: `TODO`
+Without `id-token: write` the runner injects no request variables and the failure
+looks like a network problem.
 
----
+- [ ] Variables set
 
 ## Verification
 
-Before the demonstration, confirm each of these by running it, not by inspection:
+Run `.github/workflows/verify-oidc.yml`. It probes each policy statement and
+**asserts the role cannot list IAM users**. That negative check is the only one
+that distinguishes a scoped policy from an administrator policy.
 
-- [ ] A workflow run obtains credentials and `aws sts get-caller-identity` returns
-      the expected role
-- [ ] `terraform init` reaches the S3 backend
-- [ ] `terraform plan` runs in CI on a pull request
-- [ ] An apply completes and the service answers an HTTP request
-- [ ] The `sub` condition has been tightened past step 1 and a run still succeeds
-
----
+- [ ] All steps pass
 
 ## Removal
 
-None of this is created by Terraform, so **no `terraform destroy` will remove any
-of it.** Each item needs deleting by hand, and this is the step most likely to be
-skipped once the demonstration is over.
+Nothing here is created by Terraform. No `destroy` removes any of it.
 
-- [ ] Delete the IAM role
-- [ ] Delete the OIDC identity provider, **only if** nothing else in the account
-      relies on it
-- [ ] Empty and delete the state bucket, including old object versions, which
-      versioning keeps after a plain delete
-- [ ] Remove the repository variable
-- [ ] Confirm by tag query that nothing carrying the project tag remains
-- [ ] Record here what was verified and when: `TODO`
+```bash
+aws iam detach-role-policy --role-name "$ROLE_NAME" --policy-arn <POLICY_ARN>
+aws iam delete-role --role-name "$ROLE_NAME"
+aws iam delete-policy --policy-arn <POLICY_ARN>
+aws iam delete-policy --policy-arn <BOUNDARY_ARN>
+aws iam delete-open-id-connect-provider --open-id-connect-provider-arn "$OIDC_ARN"
 
-A federated trust relationship and a deployment role left behind in an account
-that stays in use are a standing access path, long after anyone remembers why
-they exist.
+# Versioning retains objects after a plain delete, so clear all versions first
+aws s3api delete-objects --bucket "$BUCKET" --delete "$(aws s3api list-object-versions \
+  --bucket "$BUCKET" --output json \
+  --query '{Objects: Versions[].{Key:Key,VersionId:VersionId}}')"
+aws s3api delete-objects --bucket "$BUCKET" --delete "$(aws s3api list-object-versions \
+  --bucket "$BUCKET" --output json \
+  --query '{Objects: DeleteMarkers[].{Key:Key,VersionId:VersionId}}')"
+aws s3api delete-bucket --bucket "$BUCKET"
+
+gh variable delete AWS_DEPLOY_ROLE_ARN --repo "${GH_OWNER}/${GH_REPO}"
+```
+
+Delete the identity provider only if nothing else in the account uses it.
+
+```bash
+aws resourcegroupstaggingapi get-resources \
+  --tag-filters "Key=project,Values=$PROJECT" \
+  --query 'ResourceTagMappingList[].ResourceARN'
+```
+
+- [ ] Teardown run and verified empty
