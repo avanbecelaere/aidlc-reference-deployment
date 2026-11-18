@@ -31,6 +31,13 @@ crash.*.log
 !example.tfvars
 !*.tfvars.example
 
+# Partial backend configuration. The state bucket name contains the AWS account
+# id and this repository is public, so the backend is configured out of band with
+# `terraform init -backend-config=backend.hcl` rather than in a tracked file.
+backend.hcl
+*.backend.hcl
+!backend.hcl.example
+
 # Provider binaries and module cache. Large, platform-specific, re-fetchable.
 .terraform/
 
