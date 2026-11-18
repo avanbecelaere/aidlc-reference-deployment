@@ -1,0 +1,71 @@
+name: Verify OIDC
+
+# Manual trigger only, deliberately.
+#
+# This repository is public. A workflow that assumes an AWS role should not be
+# reachable by a push or a pull request here: workflow_dispatch can only be run
+# by someone with write access, which keeps the deploy role out of reach of
+# anyone who merely opens a pull request.
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write      # without this the runner injects no OIDC request vars,
+  contents: read       # and the failure looks like a network problem instead
+
+jobs:
+  verify:
+    name: Assume the deploy role and probe its permissions
+    runs-on: ubuntu-latest
+    steps:
+      # Pinned to a commit, not a moving tag. A tag can be repointed at new code
+      # by anyone who can write to that repository; a commit SHA cannot.
+      # e1253824 is v6.3.0.
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: verify-oidc-${{ github.run_id }}
+
+      - name: Who am I
+        run: |
+          aws sts get-caller-identity --output json
+
+      # Each probe below maps to one statement in the deploy policy. They are
+      # read-only. The point is to find a missing permission now rather than
+      # part way through an apply.
+      - name: Probe state bucket access (TerraformStateList)
+        run: |
+          aws s3api head-bucket --bucket "aidlc-demo-tfstate-$(aws sts get-caller-identity --query Account --output text)"
+          echo "state bucket reachable"
+
+      - name: Probe networking discovery (ReadOnlyDiscovery)
+        run: |
+          aws ec2 describe-availability-zones \
+            --query 'AvailabilityZones[?State==`available`].ZoneName' --output text
+          aws ec2 describe-vpcs --query 'length(Vpcs)' --output text
+
+      - name: Probe registry auth (EcrManage)
+        run: |
+          # Only the expiry is printed. The authorization token itself is a
+          # credential and must never reach a build log, least of all a public one.
+          aws ecr get-authorization-token \
+            --query 'authorizationData[0].expiresAt' --output text
+
+      # A policy that permits everything would pass every test above. This step
+      # asserts the policy is NOT broader than intended, which is the half of a
+      # permissions check that usually gets skipped.
+      - name: Assert the role CANNOT do what it should not
+        run: |
+          set +e
+          for probe in "iam list-users" "iam list-roles"; do
+            aws $probe --max-items 1 >/dev/null 2>&1
+            rc=$?
+            if [ $rc -eq 0 ]; then
+              echo "FAIL: '$probe' succeeded. The deploy policy is wider than intended."
+              exit 1
+            fi
+            echo "correctly denied: $probe"
+          done
+          echo "negative assertions passed"
