@@ -88,6 +88,16 @@ credentials
 local-values.md
 
 # ---------------------------------------------------------------------------
+# Local session transcripts
+# ---------------------------------------------------------------------------
+# Saved output from an AI-DLC run. Useful to keep locally as a record of how the
+# workflow behaved, but it is a verbatim session log rather than project content,
+# and it can pick up account identifiers and paths without anyone noticing.
+# The run's own artifacts under aidlc-docs/ ARE tracked; see the end of this file.
+aidlc.txt
+aidlc-*.txt
+
+# ---------------------------------------------------------------------------
 # Cross-platform editor and OS noise
 # ---------------------------------------------------------------------------
 # Included although this is built on Linux, because the repository is handed to
