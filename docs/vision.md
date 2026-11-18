@@ -36,8 +36,11 @@ pairing, not a count of sample applications, is what makes the demonstration lan
 ## 3. The system
 
 One containerised HTTP service on Amazon ECS, running on Fargate, returning a
-fixed response.
+fixed response, on networking built for it.
 
+- A VPC with public subnets across two Availability Zones, an internet gateway,
+  and the routing to reach it.
+- A security group admitting HTTP from one operator address.
 - A container image built from a minimal Dockerfile in this repository.
 - A private ECR repository holding it.
 - An ECS cluster, task definition, and service running a single task.
@@ -50,14 +53,32 @@ an application actually reaches AWS, so the process stays visible against
 infrastructure the audience already recognises, and it exercises the workflow
 against something real rather than something toy.
 
+The network is built rather than borrowed. An audience whose own infrastructure
+as code is a customised Terraform estate has nothing to compare against if the
+networking is handed to them by the platform: they would see an application
+deployment and no infrastructure. Authoring the VPC is what makes the
+infrastructure half of this demonstration real, and it is the half that maps onto
+work they already do.
+
 ### Design decisions
 
-- **No load balancer.** The task runs with a public IP in the default VPC's public
-  subnets. This is the single largest cost item and the slowest resource to create
-  and destroy, and the demonstration does not need a stable hostname. The cost is
-  that the address changes on each deployment, so it is read after deploying
-  rather than known in advance.
-- **No VPC build.** The account's default VPC is used as-is.
+- **No load balancer.** The task runs with a public IP in a public subnet. This is
+  the single largest cost item and the slowest resource to create and destroy, and
+  the demonstration does not need a stable hostname. The cost is that the address
+  changes on each deployment, so it is read after deploying rather than known in
+  advance.
+- **No NAT gateway.** Fargate tasks reach ECR and CloudWatch Logs through the
+  internet gateway, using the public address they are assigned. A NAT gateway
+  would add roughly thirty dollars a month and several minutes to every create and
+  destroy, for nothing this needs. The consequence is load-bearing: **the task
+  must be assigned a public IP, or the image pull fails** with an error that reads
+  like a registry problem rather than a networking one. This is the single most
+  common way a first Fargate deployment fails.
+- **No VPC endpoints.** They are the alternative to a public address for reaching
+  ECR, and interface endpoints are billed per hour per endpoint. Out of scope for
+  the same reason as the NAT gateway.
+- **Two Availability Zones, not one.** An ECS service wants more than one subnet
+  to place tasks in, and two is the smallest number that is not a special case.
 - **One Terraform root module**, not separate layers.
 
 ### Network exposure
