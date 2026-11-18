@@ -222,3 +222,39 @@ Before you do any work, tell me three things: that you have created `aidlc-docs/
 **Context**: Post-AI-DLC operator steps; awaiting confirmation for IAM policy change
 
 ---
+## Post-workflow - IAM Policy v2 Applied
+**Timestamp**: 2026-11-18T16:12:00Z
+**User Input**: "Apply v2 (Recommended)" ; push route: "Push straight to main"
+**AI Response**: "Created aidlc-demo-deploy policy version v2 (default; v1 retained). Verified via simulator: tag:GetResources allowed, iam:ListUsers denied. Committed fc9bffa and pushed straight to main per user choice (pr-checks / L2.1 therefore not exercised by a pull request)."
+**Context**: Post-AI-DLC step 2 remediation and step 3
+
+---
+
+## Post-workflow - Deploy Attempt 1 Failed; IAM Policy v3 Applied
+**Timestamp**: 2026-11-18T16:17:00Z
+**User Input**: "Apply v3 (Recommended)"
+**AI Response**: "Deploy run 44344921218 attempt 1 failed at docker push: 403 on manifest HEAD (needs ecr:BatchGetImage; missed by the step-2 simulator check because the action was not in the simulated list). Created policy v3 adding ecr:BatchGetImage and ecr:GetDownloadUrlForLayer to EcrManage (scoped repository/aidlc-demo*); Access Analyzer 0 findings; simulator allowed. Reran."
+**Context**: Post-AI-DLC step 3
+
+---
+
+## Post-workflow - Deploy Succeeded (L2.2, L2.4, L2.6)
+**Timestamp**: 2026-11-18T16:19:54Z
+**AI Response**: "Run https://github.com/avanbecelaere/aidlc-reference-deployment/actions/runs/44344921218 attempt 2 succeeded in 1m58s: targeted ECR apply no-op; image pushed as :fc9bffadaca899be0840e1fd1848166237e11726; plan 16 to add; apply 16 added; service stable on fc9bffa; service address http://34.221.103.151:8080/; runner probe 'correctly unreachable from the runner' (L2.4 pass). Masking: account id and OPERATOR_CIDR rendered as *** in log (L2.6 pass). Known issue: non-gating 'Image scan summary' step failed with ScanNotFoundException; the runner's Docker pushed an OCI image index (plus attestation manifest) and ECR basic scanning reports no scan for the tag. Deploy unaffected. Curl from this workstation (not the operator address) timed out, consistent with the ingress rule. L2.3 (operator curl) pending user."
+**Context**: Post-AI-DLC step 3 live tests
+
+---
+## Post-workflow - Operator Curl (L2.3)
+**Timestamp**: 2026-11-18T16:34:04Z
+**User Input**: "curl http://34.221.103.151:8080/
+Hello from aidlc-demo: deployed through GitHub Actions by an AI-DLC workflow."
+**AI Response**: "L2.3 pass: operator address receives the fixed response. Success criterion 2 met (service answered after a deployment that ran through GitHub Actions). Proceeding to L2.5 (re-run same commit) then L2.7 (destroy workflow)."
+**Context**: Post-AI-DLC live tests
+
+---
+## Post-workflow - Re-deploy and Destroy (L2.5, L2.7)
+**Timestamp**: 2026-11-18T16:38:44Z
+**AI Response**: "L2.5 pass: re-ran deploy on fc9bffa; build skipped (image already in ECR), targeted and full apply 'No changes', service stable, runner refused. L2.7: destroy run https://github.com/avanbecelaere/aidlc-reference-deployment/actions/runs/44348971318 destroyed 17 resources, but its verification step failed BY DESIGN ERROR: it ran a plain 'terraform plan -detailed-exitcode', which after a destroy correctly reports '17 to add' (exit 2). Correct check is 'terraform plan -destroy -detailed-exitcode'. Fixed in destroy.yml, requirements FR-9.3, infrastructure design section 7.3, deployment architecture and docs/deploy.md. Independent read-only verification (test01): subnet and SG rules NotFound, ECS service INACTIVE, task STOPPED, task definition aidlc-demo:1 DELETE_IN_PROGRESS, ECR repo NotFound, log groups 0, VPCs tagged project 0, execution role NoSuchEntity. Tag API still listed stale entries for some of these (eventual consistency) plus the hand-made state bucket. Also added ecr:BatchGetImage/GetDownloadUrlForLayer to the documented deploy-role action list. Committing fix and re-running destroy against empty state to prove the corrected check."
+**Context**: Post-AI-DLC step 4
+
+---

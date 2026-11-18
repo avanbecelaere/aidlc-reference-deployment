@@ -106,10 +106,12 @@ jobs:
           echo "$ARNS" | tr '\t' '\n' | xargs -n 10 aws ecs delete-task-definitions \
             --query 'failures' --output table --task-definitions
 
-      # Exit code 0 means no changes: nothing Terraform manages remains.
-      # Exit code 2 means something is left, and fails the job.
-      - name: Verify the plan reports no changes
-        run: terraform -chdir=infra plan -detailed-exitcode
+      # A destroy plan against the now-empty state must have nothing to do.
+      # Exit code 0: nothing Terraform manages remains. Exit code 2: something is
+      # left, which fails the job. (A plain `plan` here would rightly report
+      # everything "to add", because it compares empty state to the configuration.)
+      - name: Verify a destroy plan reports no changes
+        run: terraform -chdir=infra plan -destroy -detailed-exitcode
 
       # Printed for the record. Expect nothing Terraform created. Hand-made
       # resources (the state bucket) may appear, and task definitions being

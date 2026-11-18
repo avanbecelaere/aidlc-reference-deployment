@@ -88,7 +88,7 @@ Terraform and the workflows call these APIs. The prerequisites say to expect ite
 |---|---|
 | State | `s3:ListBucket` on the bucket; `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject` on `aidlc-demo/*`, which includes the `.tflock` lockfile |
 | Network | `ec2:Create/Delete/Describe/ModifyVpc*`, `*Subnet*`, `*InternetGateway*` (including `Attach`/`Detach`), `*RouteTable*`, `*Route`, `*SecurityGroup*`, `AuthorizeSecurityGroupIngress/Egress`, `RevokeSecurityGroupIngress/Egress`, `ec2:CreateTags`, `ec2:DescribeAvailabilityZones`, `ec2:DescribeNetworkInterfaces` |
-| Registry | `ecr:CreateRepository`, `DeleteRepository`, `DescribeRepositories`, `PutImageScanningConfiguration`, `PutImageTagMutability`, `TagResource`, `ListTagsForResource`, `GetAuthorizationToken`, `BatchCheckLayerAvailability`, `InitiateLayerUpload`, `UploadLayerPart`, `CompleteLayerUpload`, `PutImage`, `DescribeImages`, `DescribeImageScanFindings`, `BatchDeleteImage` |
+| Registry | `ecr:CreateRepository`, `DeleteRepository`, `DescribeRepositories`, `PutImageScanningConfiguration`, `PutImageTagMutability`, `TagResource`, `ListTagsForResource`, `GetAuthorizationToken`, `BatchCheckLayerAvailability`, `InitiateLayerUpload`, `UploadLayerPart`, `CompleteLayerUpload`, `PutImage`, `DescribeImages`, `DescribeImageScanFindings`, `BatchDeleteImage`, `BatchGetImage` and `GetDownloadUrlForLayer` (docker push issues a manifest HEAD; found live 2026-11-18) |
 | Compute | `ecs:CreateCluster`, `DeleteCluster`, `DescribeClusters`, `RegisterTaskDefinition`, `DeregisterTaskDefinition`, `DescribeTaskDefinition`, `DeleteTaskDefinitions`, `ListTaskDefinitions`, `CreateService`, `UpdateService`, `DeleteService`, `DescribeServices`, `ListTasks`, `DescribeTasks`, `TagResource`, `ListTagsForResource` |
 | Logs | `logs:CreateLogGroup`, `DeleteLogGroup`, `DescribeLogGroups`, `PutRetentionPolicy`, `TagResource`, `ListTagsForResource` |
 | IAM | `TaskRolesWithinBoundary` and `PassOnlyTaskRolesToEcs` from the prerequisites, plus read actions on `aidlc-demo-task-*`: `iam:GetRole`, `ListRolePolicies`, `ListAttachedRolePolicies`, `ListInstanceProfilesForRole` |
@@ -236,7 +236,7 @@ The positive check, that the operator address gets the fixed response, is done b
 | 1 to 5 | Same as deploy steps 1 to 5 | |
 | 6 | Destroy | `terraform destroy -auto-approve` |
 | 7 | Clean up task definitions | Delete the `INACTIVE` revisions of family `aidlc-demo` with `aws ecs delete-task-definitions`. Otherwise deregistered revisions stay listed under the project tag, which would defeat success criterion 5. |
-| 8 | Check for an empty plan | `terraform plan -detailed-exitcode`. Exit code 0 is required; 2 fails the job (FR-9.3). |
+| 8 | Check for an empty destroy plan | `terraform plan -destroy -detailed-exitcode`. (Corrected 2026-11-18: the original plain `plan` reports everything "to add" after a destroy.) Exit code 0 is required; 2 fails the job (FR-9.3). |
 | 9 | Tag query | `aws resourcegroupstaggingapi get-resources --tag-filters Key=project,Values=aidlc-demo`, then print the ARNs. It is expected to show nothing that Terraform created. The hand-made state bucket may appear and is listed for the operator to see. Hand-made removal follows `docs/prerequisites.md` Removal. |
 
 ---

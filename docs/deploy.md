@@ -107,8 +107,8 @@ The job:
 
 1. runs `terraform destroy`;
 2. deletes inactive ECS task definitions, which Terraform can only deregister;
-3. runs `terraform plan -detailed-exitcode`, and **fails unless it reports no
-   changes**;
+3. runs `terraform plan -destroy -detailed-exitcode`, and **fails unless it
+   reports no changes**;
 4. prints every resource still tagged `project=aidlc-demo`. Expect nothing that
    Terraform created. The hand-made state bucket may appear.
 

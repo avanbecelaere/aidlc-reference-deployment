@@ -60,7 +60,7 @@ flowchart TD
     DESTROYDISP["workflow_dispatch destroy<br/>confirm = aidlc-demo"] --> D1["Assume role, mask, init"]
     D1 --> D2["terraform destroy"]
     D2 --> D3["Delete INACTIVE task definitions"]
-    D3 --> D4["plan -detailed-exitcode must be 0"]
+    D3 --> D4["plan -destroy -detailed-exitcode must be 0"]
     D4 --> D5["Tag query for project = aidlc-demo"]
 ```
 
@@ -81,7 +81,7 @@ flowchart TD
    1. assumes the role, masks the account id and runs `init`;
    2. runs `terraform destroy`;
    3. deletes the INACTIVE task definitions;
-   4. requires an empty plan;
+   4. requires an empty destroy plan;
    5. runs the tag query.
 
 ## Pre-existing, Hand-made (Not Managed Here)

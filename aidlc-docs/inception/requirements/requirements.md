@@ -93,7 +93,7 @@ Source of answers: `requirement-verification-questions.md`. All 17 questions are
 ### FR-9 Destroy workflow (Q14-A)
 - **FR-9.1** Triggered by `workflow_dispatch` with a required input, `confirm`. It proceeds only if `confirm == aidlc-demo`.
 - **FR-9.2** It uses the same credential, masking and backend steps as FR-8.
-- **FR-9.3** It runs `terraform destroy`, then a `terraform plan -detailed-exitcode` that must report no changes, then a tag query for `project=aidlc-demo` resources.
+- **FR-9.3** It runs `terraform destroy`, then a `terraform plan -destroy -detailed-exitcode` that must report no changes (corrected 2026-11-18), then a tag query for `project=aidlc-demo` resources.
   - The tag query will still list the hand-made state bucket, OIDC provider and role.
   - Those are removed by hand, per `docs/prerequisites.md` Removal.
 
