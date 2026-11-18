@@ -122,14 +122,17 @@ removed afterwards. See `docs/prerequisites.md`.
    Actions, not from a workstation.
 3. A reader can follow the chain from this document to the running task without
    having been present.
-4. A second engineer can clone the repository, supply their own AWS account and
+4. ~~A second engineer can clone the repository, supply their own AWS account and
    GitHub repository, follow `docs/prerequisites.md`, and reach a working
-   deployment with no verbal instruction.
+   deployment with no verbal instruction.~~ **Dropped on 2026-11-18 at the owner's
+   direction**, after the AI-DLC run. See `aidlc-docs/audit.md`. The numbering is
+   kept so that references to criterion 5 stay valid.
 5. Teardown removes everything, verified by a plan reporting no changes and by
    finding nothing left under the project tag.
 
-Criterion 4 is the one that usually fails in demonstrations, which is why it is
-stated rather than assumed.
+Criterion 4 was originally included because it is the one that usually fails in
+demonstrations. It is no longer a success criterion. The prerequisites and
+runbook still aim to be followable without help, but this has not been tested.
 
 ## 5. Scope boundaries
 

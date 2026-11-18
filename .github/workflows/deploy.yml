@@ -109,14 +109,30 @@ jobs:
             echo "image for $GITHUB_SHA already in ECR; not rebuilding"
             exit 0
           fi
-          docker build --platform linux/amd64 -t "${REPO}:${GITHUB_SHA}" app/
+          # No provenance/SBOM attestations: with them, the runner pushes an OCI
+          # image index, which ECR basic scanning does not scan. Without them the
+          # tag points at a single image manifest, which it does.
+          docker build --platform linux/amd64 --provenance=false --sbom=false \
+            -t "${REPO}:${GITHUB_SHA}" app/
           docker push "${REPO}:${GITHUB_SHA}"
+          echo "pushed media type: $(aws ecr describe-images --repository-name "$PROJECT" \
+            --image-ids imageTag="$GITHUB_SHA" --query 'imageDetails[0].imageManifestMediaType' --output text)"
 
       # Informational only: printed, never gating.
       - name: Image scan summary
         continue-on-error: true
         run: |
-          aws ecr wait image-scan-complete --repository-name "$PROJECT" --image-id imageTag="$GITHUB_SHA"
+          # The scan starts a few seconds after the push, and until then ECR
+          # answers ScanNotFound, which makes the built-in waiter fail at once.
+          # Poll for up to 3 minutes instead.
+          for _ in $(seq 1 36); do
+            status="$(aws ecr describe-image-scan-findings --repository-name "$PROJECT" \
+              --image-id imageTag="$GITHUB_SHA" --query 'imageScanStatus.status' --output text 2>/dev/null || echo PENDING)"
+            echo "scan status: $status"
+            case "$status" in COMPLETE) break ;; FAILED|UNSUPPORTED_IMAGE) exit 1 ;; esac
+            sleep 5
+          done
+          [ "$status" = COMPLETE ] || { echo "::warning::Scan did not complete within 3 minutes"; exit 1; }
           echo "Scan findings by severity (empty means none):"
           aws ecr describe-image-scan-findings --repository-name "$PROJECT" \
             --image-id imageTag="$GITHUB_SHA" \

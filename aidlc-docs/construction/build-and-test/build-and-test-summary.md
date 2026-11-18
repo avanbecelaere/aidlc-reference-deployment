@@ -78,5 +78,5 @@ v1 and v2 are kept as non-default versions.
 | 1 | Every stage approved and recorded in `audit.md` | Met |
 | 2 | The service answers after a GitHub Actions deployment | **Met** (L2.2, L2.3) |
 | 3 | A reader can follow the chain from vision to the running task | Met: `aidlc-docs`, then commit `fc9bffa`, then image tag, then task definition |
-| 4 | A second engineer can reproduce it | Documented. Not yet proven by a second engineer. `docs/prerequisites.md` now includes the policy fixes found live. |
+| 4 | ~~A second engineer can reproduce it~~ | **Dropped on 2026-11-18** at the owner's direction |
 | 5 | Teardown is verified | Terraform-managed resources: **met**. Hand-made resources: **pending** (L2.8). |

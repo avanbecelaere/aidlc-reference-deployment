@@ -71,9 +71,9 @@ those two facts.
 4. Approve each stage deliberately. The approval record in `aidlc-docs/audit.md`
    is the artifact that makes this reproducible by someone who was not present.
 
-Being reproducible by a stranger is a stated success criterion, not a nicety. It
-is also the one that most often fails. If a step here does not work for you, that
-is a defect in this repository.
+Reproduction by a second engineer was dropped as a formal success criterion on
+2026-11-18 (see `docs/vision.md`, section 4), and nobody has tested it. If a step
+here does not work for you, please report it as a defect.
 
 ## What this is not
 

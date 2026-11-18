@@ -271,3 +271,10 @@ Hello from aidlc-demo: deployed through GitHub Actions by an AI-DLC workflow."
 **Context**: Post-AI-DLC; run complete pending hand-made removal
 
 ---
+## Post-workflow - Image Scan Fix and Criterion Change
+**Timestamp**: 2026-11-18T17:08:28Z
+**User Input**: "fix image scan. drop reproducibility criterion"
+**AI Response**: "Image scan: deploy.yml now builds with --provenance=false --sbom=false so the pushed tag is a single image manifest (ECR basic scanning does not scan the OCI index that attestations produce), prints the pushed media type, and replaces the ECR waiter (which fails immediately on the transient ScanNotFound right after a push) with a 3-minute poll. actionlint clean. Criterion: vision section 4 criterion 4 (second-engineer reproduction) struck through and marked dropped at the owner's direction, numbering kept; NFR-8 and traceability marked dropped in requirements.md; README and build-and-test summary updated. Verifying the scan fix with one deploy then destroy cycle (same exposure as previously approved)."
+**Context**: Post-AI-DLC change requested by user
+
+---

@@ -115,7 +115,7 @@ Source of answers: `requirement-verification-questions.md`. All 17 questions are
 | NFR-5 | Container runs as non-root | Q6 |
 | NFR-6 | Everything created is tagged `project = aidlc-demo` | Vision §7, §8 |
 | NFR-7 | Clean teardown leaves no Terraform-managed resources, verified by plan and tag query | Vision §4.5, §8 |
-| NFR-8 | Reproducible from a clone plus `docs/prerequisites.md` with no verbal instruction | Vision §4.4 |
+| NFR-8 | ~~Reproducible from a clone plus `docs/prerequisites.md` with no verbal instruction~~ **Dropped on 2026-11-18** with vision criterion 4, at the owner's direction | Vision §4.4 |
 | NFR-9 | Running cost is near zero: one 0.25 vCPU Fargate task, with no ALB, NAT gateway or endpoints | Vision §3 |
 | NFR-10 | Explicit review pass in Construction of the ingress rule, the IAM role and the base image, even though the Security extension is off | Vision §3, Q15 note |
 
@@ -155,7 +155,7 @@ Source of answers: `requirement-verification-questions.md`. All 17 questions are
 | 1. Every stage approved and recorded in audit.md | AI-DLC process |
 | 2. Responds after a deployment through GitHub Actions | FR-8, FR-1 |
 | 3. Chain from vision to running task | aidlc-docs, plus the git-SHA image tag (FR-8.6) |
-| 4. A second engineer reproduces it | FR-10, NFR-8 |
+| 4. ~~A second engineer reproduces it~~ (dropped 2026-11-18) | none |
 | 5. Teardown verified | FR-9, NFR-7 |
 
 ## 7. Known Risks Carried Forward
