@@ -8,15 +8,19 @@ cd <repo-root>
 claude
 ```
 
-Paste the prompt below as the first message.
+Paste the prompt below as the first message. It opens with the exact phrase the
+AI-DLC project documents as the activation trigger: "Using AI-DLC, ...". That
+wording is not decoration. The rules also claim to activate on any software
+development request, but the documented phrase is the reliable path, and
+activation failing silently is the worst failure this workflow has.
 
 ---
 
 ## The prompt
 
-> I want to build the system described in `docs/vision.md` in this repository.
-> Read that document first. It is the requirements input and it is deliberately
-> narrow.
+> Using AI-DLC, build the system described in `docs/vision.md` in this
+> repository. Read that document first. It is the requirements input and it is
+> deliberately narrow.
 >
 > This is a greenfield project. The repository currently contains only
 > documentation, the AI-DLC rules, a `.gitignore`, a licence, and one GitHub
@@ -71,3 +75,15 @@ artifacts. For a single-day scope, declining all three is the defensible choice,
 and you can speak to what they would add rather than running them.
 
 Decide before it asks, so the answer is a choice rather than a reflex.
+
+## If it does not activate
+
+The upstream project's own verification for Claude Code is to ask it directly:
+
+```
+What instructions are currently active in this project?
+```
+
+It should name `CLAUDE.md`. `/config` shows the current configuration. If
+`CLAUDE.md` is not listed, the rules are not loaded and nothing downstream will
+behave as documented, whatever the agent says about following a workflow.
