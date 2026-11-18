@@ -278,3 +278,10 @@ Hello from aidlc-demo: deployed through GitHub Actions by an AI-DLC workflow."
 **Context**: Post-AI-DLC change requested by user
 
 ---
+## Post-workflow - Keep Deployment Up
+**Timestamp**: 2026-11-18T17:18:49Z
+**User Input**: "run the deploy and keep it up. will destroy after the demo on friday"
+**AI Response**: "Stopped the background deploy-then-destroy job; destroy run 44355801199 had already started and was cancelled mid-apply after destroying 7 resources (both SG rules, policy attachment, both route table associations, route table, internet gateway). Cancellation left a stale S3 state lock (ID 8783645c-aaf5-0abc-2a8d-13b95ce7f6cb, created by the cancelled run); verified no run active, released with terraform force-unlock from the workstation (test01; backend.hcl written locally, gitignored, deleted after). Re-ran deploy 44356154352: image reused, plan 8 to add, applied, service stable on 5aae7e3, address http://16.146.104.117:8080/, runner refused. Scan fix verified on deploy 44355320266: pushed media type application/vnd.docker.distribution.manifest.v2+json, scan COMPLETE, findings CRITICAL 9 / HIGH 26 / MEDIUM 1 for nginx-unprivileged 1.30.6-alpine3.24 (non-gating, reported to user). Deployment left running for Friday's demo; destroy and hand-made removal outstanding."
+**Context**: Post-AI-DLC; deployment live
+
+---
