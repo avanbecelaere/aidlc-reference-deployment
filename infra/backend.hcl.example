@@ -1,0 +1,9 @@
+# Copy to backend.hcl (gitignored) and fill in, then:
+#   terraform -chdir=infra init -backend-config=backend.hcl
+# Never commit the filled-in file: the bucket name contains the AWS account id.
+# The deploy and destroy workflows write this file on the runner themselves.
+bucket       = "<PROJECT>-tfstate-<ACCOUNT_ID>"
+key          = "<PROJECT>/terraform.tfstate"
+region       = "<REGION>"
+encrypt      = true
+use_lockfile = true

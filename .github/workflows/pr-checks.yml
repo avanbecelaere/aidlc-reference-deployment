@@ -1,0 +1,56 @@
+name: PR checks
+
+# Checks that need no AWS credentials, on every pull request.
+#
+# This job deliberately does NOT assume the deploy role. The role's trust policy
+# is pinned to one branch, so a pull_request run cannot assume it, and pull
+# requests from forks get no OIDC token at all. A real `terraform plan` runs in
+# the deploy workflow, immediately before apply. See README.md.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Static checks
+    runs-on: ubuntu-latest
+    steps:
+      # actions/checkout v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      # This repository is public. Fail if anything shaped like an AWS account id
+      # (a standalone run of 12 digits) is committed anywhere.
+      - name: No account ids in tracked files
+        run: |
+          if git grep -nE '(^|[^0-9A-Za-z])[0-9]{12}([^0-9A-Za-z]|$)'; then
+            echo "::error::A 12-digit number that looks like an AWS account id is committed (lines above)."
+            exit 1
+          fi
+          echo "no account-id-shaped numbers found"
+
+      # hashicorp/setup-terraform v4.0.1
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e
+        with:
+          terraform_version: 1.17.2
+          terraform_wrapper: false
+
+      - name: terraform fmt
+        run: terraform -chdir=infra fmt -check -recursive
+
+      - name: terraform init (no backend)
+        run: terraform -chdir=infra init -backend=false -input=false
+
+      - name: terraform validate
+        run: terraform -chdir=infra validate
+
+      # Offline tests against a mocked AWS provider: ingress is a single /32,
+      # public IP assigned, X86_64, immutable and scanned images, circuit breaker.
+      - name: terraform test
+        run: terraform -chdir=infra test
+
+      - name: docker build
+        run: docker build --platform linux/amd64 -t aidlc-demo:pr-check app/

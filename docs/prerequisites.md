@@ -204,7 +204,32 @@ privileged than itself. Without the `PassedToService` condition, an unconstraine
 
 Never attach an administrator policy.
 
+`<BOUNDARY_ARN>` is the policy `<PROJECT_TAG>-task-boundary`. Terraform looks it
+up by that name through the variable `permissions_boundary_name` in
+`infra/variables.tf`, whose default is `aidlc-demo-task-boundary`. Terraform
+attaches it to the one role it creates, `<PROJECT_TAG>-task-execution`. The
+boundary must allow at least the actions in AWS's managed
+`AmazonECSTaskExecutionRolePolicy`: ECR pull and log writes.
+
+**Every API the deployment calls** is listed in
+`aidlc-docs/construction/reference-deployment/infrastructure-design/infrastructure-design.md`,
+section 4. Check the policy against that list before the first deploy.
+
+> **Known gap: tagging.** The AWS Service Authorization Reference lists
+> `iam:PermissionsBoundary` as a condition key for `CreateRole`, `DeleteRole`,
+> `AttachRolePolicy`, `DetachRolePolicy`, `PutRolePolicy` and `DeleteRolePolicy`,
+> but **not** for `iam:TagRole` or `iam:UntagRole`. A missing key fails
+> `StringEquals`, so the statement above denies tagging. `CreateRole` with tags,
+> which `default_tags` always sends, also needs `iam:TagRole`, so the first apply
+> fails. Move `iam:TagRole` and `iam:UntagRole` into their own statement, with the
+> same `<PROJECT_TAG>-task-*` resource and no boundary condition.
+>
+> The teardown steps also need these, which the API list includes:
+> - `ecs:DeleteTaskDefinitions` on `task-definition/<PROJECT_TAG>:*`
+> - `tag:GetResources`
+
 - [ ] Policy attached, and both conditions present
+- [ ] Policy checked against the API list in the infrastructure design
 
 ## 5. GitHub repository
 
@@ -228,7 +253,22 @@ permissions:
 Without `id-token: write` the runner injects no request variables and the failure
 looks like a network problem.
 
+The service admits HTTP from one operator address only. That address is a
+**secret**, not a variable. GitHub masks secret values in every log line,
+including `terraform plan` output, and Actions logs are public on a public
+repository.
+
+```bash
+gh secret set OPERATOR_CIDR --body "<YOUR_PUBLIC_IP>/32" --repo "${GH_OWNER}/${GH_REPO}"
+```
+
+It must be a single `/32`. Terraform rejects anything wider, including
+`0.0.0.0/0`. Find your address with `curl -s https://checkip.amazonaws.com`. If it
+changes, for example when you move network, update the secret and run Deploy
+again.
+
 - [ ] Variables set
+- [ ] `OPERATOR_CIDR` secret set
 
 ## Verification
 
@@ -259,7 +299,11 @@ aws s3api delete-objects --bucket "$BUCKET" --delete "$(aws s3api list-object-ve
 aws s3api delete-bucket --bucket "$BUCKET"
 
 gh variable delete AWS_DEPLOY_ROLE_ARN --repo "${GH_OWNER}/${GH_REPO}"
+gh secret delete OPERATOR_CIDR --repo "${GH_OWNER}/${GH_REPO}"
 ```
+
+Run the **Destroy** workflow first (see `docs/deploy.md`). It needs the role and
+the state bucket, so it cannot run after they are removed.
 
 Delete the identity provider only if nothing else in the account uses it.
 

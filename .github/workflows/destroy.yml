@@ -1,0 +1,121 @@
+name: Destroy
+
+# Manual trigger only, with a typed confirmation. Removes everything this
+# repository's Terraform created, then verifies: a plan reporting no changes,
+# and a query for anything still carrying the project tag.
+#
+# It does NOT remove the hand-made state bucket, OIDC provider, deploy role or
+# boundary policy. Terraform did not create them; remove them by hand per
+# docs/prerequisites.md, Removal.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type aidlc-demo to destroy"
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: aidlc-demo-infra
+  cancel-in-progress: false
+
+env:
+  PROJECT: aidlc-demo
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  TF_IN_AUTOMATION: "1"
+  TF_INPUT: "0"
+  # Required variables with no bearing on what is destroyed. If the secret has
+  # already been removed, a documentation-range placeholder (TEST-NET-1) is used.
+  TF_VAR_operator_cidr: ${{ secrets.OPERATOR_CIDR || '192.0.2.1/32' }}
+  TF_VAR_image_tag: destroy
+
+jobs:
+  destroy:
+    name: Destroy and verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Refuse without confirmation, or off the default branch
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::Destroy runs from main only (got $GITHUB_REF)."
+            exit 1
+          fi
+          if [ "$CONFIRM" != "$PROJECT" ]; then
+            echo "::error::Confirmation did not match. Type ${PROJECT} to destroy."
+            exit 1
+          fi
+
+      # actions/checkout v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      # e1253824 is v6.3.0.
+      - name: Assume the deploy role via OIDC
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: destroy-${{ github.run_id }}
+          mask-aws-account-id: true
+
+      - name: Mask the account id
+        run: |
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          echo "::add-mask::${ACCOUNT_ID}"
+          echo "ACCOUNT_ID=${ACCOUNT_ID}" >> "$GITHUB_ENV"
+
+      - name: Write backend.hcl
+        run: |
+          cat > infra/backend.hcl <<HCL
+          bucket       = "${PROJECT}-tfstate-${ACCOUNT_ID}"
+          key          = "${PROJECT}/terraform.tfstate"
+          region       = "${AWS_REGION}"
+          encrypt      = true
+          use_lockfile = true
+          HCL
+
+      # hashicorp/setup-terraform v4.0.1
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e
+        with:
+          terraform_version: 1.17.2
+          terraform_wrapper: false
+
+      - name: terraform init
+        run: terraform -chdir=infra init -backend-config=backend.hcl
+
+      - name: terraform destroy
+        run: terraform -chdir=infra destroy -auto-approve
+
+      # Terraform deregisters task definitions but cannot delete them, and
+      # deregistered (INACTIVE) revisions stay listed under the project tag.
+      - name: Delete inactive task definitions
+        run: |
+          ARNS="$(aws ecs list-task-definitions --family-prefix "$PROJECT" --status INACTIVE \
+            --query 'taskDefinitionArns' --output text)"
+          if [ -z "$ARNS" ] || [ "$ARNS" = "None" ]; then
+            echo "no inactive task definitions"
+            exit 0
+          fi
+          echo "$ARNS" | tr '\t' '\n' | xargs -n 10 aws ecs delete-task-definitions \
+            --query 'failures' --output table --task-definitions
+
+      # Exit code 0 means no changes: nothing Terraform manages remains.
+      # Exit code 2 means something is left, and fails the job.
+      - name: Verify the plan reports no changes
+        run: terraform -chdir=infra plan -detailed-exitcode
+
+      # Printed for the record. Expect nothing Terraform created. Hand-made
+      # resources (the state bucket) may appear, and task definitions being
+      # deleted can linger for a short while.
+      - name: List anything still tagged with the project
+        run: |
+          aws resourcegroupstaggingapi get-resources \
+            --tag-filters "Key=project,Values=${PROJECT}" \
+            --query 'ResourceTagMappingList[].ResourceARN' --output table
