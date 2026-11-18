@@ -180,8 +180,9 @@ where possible, one branch or environment. Content paraphrased from
         "StringEquals": {
           "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
         },
-        "StringLike": {
-          "token.actions.githubusercontent.com:sub": "repo:<OWNER>/<REPO>:*"
+        "StringEquals": {
+          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+          "token.actions.githubusercontent.com:sub": "<THE OBSERVED SUB VALUE>"
         }
       }
     }
@@ -189,51 +190,82 @@ where possible, one branch or environment. Content paraphrased from
 }
 ```
 
-### The `sub` claim trap, which matters for a new repository
+### The `sub` claim, which has two shapes
 
-The `sub` claim has historically looked like
-`repo:OWNER/REPO:ref:refs/heads/BRANCH`. Recent reports say that for
-**repositories created since roughly July 2026 the claim also carries numeric
-owner and repository IDs**, which breaks a condition written in the older shape.
-See [this write-up](https://dev.to/sascha-ms/github-actions-oidc-aws-deploys-without-access-keys-3cm3)
-and confirm against GitHub's current documentation before trusting either format.
+**Do not write this condition from an example. Observe the claim your repository
+actually sends, then pin it.** The shape changed, and most tutorials show the old
+one.
 
-The failure mode is an `AssumeRoleWithWebIdentity` denial that does not say which
-condition rejected the token, which is a poor thing to debug on a deadline.
+The older shape, which many guides still show:
 
-Deliberate staging, rather than guessing the format:
+```
+repo:OWNER/REPO:ref:refs/heads/BRANCH
+```
 
-1. Start with `StringLike` on `repo:OWNER/REPO:*` as above. **The repository is
-   still pinned**, which is the boundary AWS warns about; only the portion after
-   the repository is left open.
-2. Run the workflow once and observe the actual `sub` value the token carried.
-3. Tighten to `StringEquals` on that exact observed value, including the branch or
-   environment.
+The newer shape, **confirmed by direct observation on a repository created
+2026-11-18**, which embeds the numeric owner and repository ids with `@`
+separators:
 
-- [ ] Step 1 applied
-- [ ] Actual `sub` value observed and recorded here: `TODO`
-- [ ] Tightened to the exact value
+```
+repo:OWNER@OWNER_ID/REPO@REPO_ID:ref:refs/heads/BRANCH
+```
 
-Do not stop after step 1. A `*` after the repository still permits any branch,
-any tag, and any pull request in that repository to assume the role. **On a public
-repository this matters more**, because a pull request opened from a fork runs in
-the context of your repository, so anyone can cause that workflow to run. Pin the
-ref, or gate the apply behind a GitHub environment and pin the environment
-instead.
+A condition written in the old shape cannot match the new one, and the reason is
+worth understanding rather than memorising: the mismatch happens **early in the
+string**, at `OWNER@` where the pattern expects `OWNER/`. A trailing wildcard
+only covers the tail, so `repo:OWNER/REPO:*` fails just as surely as a fully
+pinned value does. The wildcard looks like insurance and provides none.
+
+The failure is `AccessDenied`, "Not authorized to perform
+sts:AssumeRoleWithWebIdentity", naming no condition. It is indistinguishable from
+a wrong audience, a missing identity provider, or a typo.
+
+### Find the real value instead of guessing
+
+CloudTrail records failed attempts, including the subject that was rejected:
+
+```bash
+aws cloudtrail lookup-events \
+  --lookup-attributes AttributeKey=EventName,AttributeValue=AssumeRoleWithWebIdentity \
+  --max-results 10 --query 'Events[].CloudTrailEvent' --output text
+```
+
+Read `userIdentity.userName`. That is the `sub` the token carried. Prefer this to
+printing claims inside the workflow, because a public repository's build logs are
+readable by anyone.
+
+Then pin it:
+
+```json
+        "StringEquals": {
+          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+          "token.actions.githubusercontent.com:sub": "<THE OBSERVED VALUE>"
+        }
+```
+
+- [ ] Observed `sub` recorded: `TODO`
+- [ ] Pinned with `StringEquals`, not a wildcard
+
+Pinning the whole value also pins the branch, which is what you want. It excludes
+pull requests, whose subject differs, and that matters most on a **public**
+repository where anyone can open one.
 
 **Never** write `repo:OWNER/*` or anything broader. That grants every repository
-in the organisation.
+belonging to that owner.
 
-### Consider conditioning on the numeric ids too
+### A side benefit of the newer shape
 
-If the token carries `repository_id` and `repository_owner_id` claims, adding them
-alongside `sub` makes the policy survive a repository rename, and stops anyone who
-later claims the same repository name from matching it. Both ids are readable from
-the GitHub API for your own repository.
+Because the numeric ids are part of the subject, pinning the whole subject pins
+them too, and that is stronger than a name-based condition. Ids are never
+reissued, so a repository later created with the same name by someone else cannot
+match your policy, and a rename of yours breaks it loudly rather than silently
+transferring trust.
 
-Confirm the claims are actually present in the token before relying on them. A
-condition naming a claim the token does not carry denies every request, and looks
-identical to every other trust policy failure.
+If your repository sends the older shape instead, consider adding the
+`repository_id` and `repository_owner_id` claims as separate conditions to get the
+same property. Confirm they are present in the token first: a condition naming a
+claim the token does not carry denies every request, and looks identical to every
+other trust policy failure.
 
 ---
 
