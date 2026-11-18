@@ -58,7 +58,7 @@ your filled-in values in a local, untracked file rather than editing them in her
       Account id: `TODO`
 - [ ] Credentials for that account with permission to create IAM identity
       providers, IAM roles, and S3 buckets
-- [ ] A GitHub repository holding this code, and admin on it: `TODO owner/repo`
+- [ ] A GitHub repository holding this code, and admin on it: `<OWNER>/<REPO>`
 - [x] Terraform installed locally. Version in use: **1.16.3** (linux_arm64)
 - [ ] A region chosen and recorded: **proposed `us-west-2`**
 - [ ] A single project tag chosen and recorded, used on every resource so teardown
@@ -181,7 +181,7 @@ where possible, one branch or environment. Content paraphrased from
           "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
         },
         "StringLike": {
-          "token.actions.githubusercontent.com:sub": "repo:TODO_OWNER/TODO_REPO:*"
+          "token.actions.githubusercontent.com:sub": "repo:<OWNER>/<REPO>:*"
         }
       }
     }
@@ -215,10 +215,25 @@ Deliberate staging, rather than guessing the format:
 - [ ] Tightened to the exact value
 
 Do not stop after step 1. A `*` after the repository still permits any branch,
-any tag, and any pull request in that repository to assume the role.
+any tag, and any pull request in that repository to assume the role. **On a public
+repository this matters more**, because a pull request opened from a fork runs in
+the context of your repository, so anyone can cause that workflow to run. Pin the
+ref, or gate the apply behind a GitHub environment and pin the environment
+instead.
 
 **Never** write `repo:OWNER/*` or anything broader. That grants every repository
 in the organisation.
+
+### Consider conditioning on the numeric ids too
+
+If the token carries `repository_id` and `repository_owner_id` claims, adding them
+alongside `sub` makes the policy survive a repository rename, and stops anyone who
+later claims the same repository name from matching it. Both ids are readable from
+the GitHub API for your own repository.
+
+Confirm the claims are actually present in the token before relying on them. A
+condition naming a claim the token does not carry denies every request, and looks
+identical to every other trust policy failure.
 
 ---
 
