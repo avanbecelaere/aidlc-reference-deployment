@@ -306,3 +306,10 @@ Hello from aidlc-demo: deployed through GitHub Actions by an AI-DLC workflow."
 **Context**: Post-AI-DLC documentation
 
 ---
+## Post-workflow - Manual Denial Check
+**Timestamp**: 2026-11-18T20:25:09Z
+**User Input**: "curl http://<task-ip>:8080/ / curl: (28) Failed to connect to <task-ip> port 8080 after 138211 ms: Could not connect to server" ; "thats from a diff source ip"
+**AI Response**: "Read-only check (test01): ECS service ACTIVE, 1/1 running, rollout COMPLETED; task public IP unchanged; security group ingress is a single /32 on 8080 (the OPERATOR_CIDR address). The operator's curl from a different source address was refused (connection timed out after ~138 s), confirming by hand, outside GitHub, the denial the deploy workflow's runner probe asserts on every run. IP addresses omitted here."
+**Context**: Post-AI-DLC live verification (complements L2.4)
+
+---
