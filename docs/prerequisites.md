@@ -174,62 +174,274 @@ ids, which are never reissued. Never write `repo:OWNER/*`.
 
 ## 4. Role permissions
 
-Scope by service and name prefix. Expect to iterate: Terraform reports each
-missing action as an `AccessDenied` naming the API.
-
-Two statements are mandatory, whatever else you grant:
-
-```json
-{
-  "Sid": "TaskRolesWithinBoundary",
-  "Effect": "Allow",
-  "Action": ["iam:CreateRole","iam:DeleteRole","iam:TagRole","iam:UntagRole",
-             "iam:AttachRolePolicy","iam:DetachRolePolicy",
-             "iam:PutRolePolicy","iam:DeleteRolePolicy"],
-  "Resource": "arn:aws:iam::<ACCOUNT_ID>:role/<PROJECT_TAG>-task-*",
-  "Condition": { "StringEquals": { "iam:PermissionsBoundary": "<BOUNDARY_ARN>" } }
-},
-{
-  "Sid": "PassOnlyTaskRolesToEcs",
-  "Effect": "Allow",
-  "Action": "iam:PassRole",
-  "Resource": "arn:aws:iam::<ACCOUNT_ID>:role/<PROJECT_TAG>-task-*",
-  "Condition": { "StringEquals": { "iam:PassedToService": "ecs-tasks.amazonaws.com" } }
-}
-```
-
-Without the boundary condition, a role that can create roles can create one more
-privileged than itself. Without the `PassedToService` condition, an unconstrained
-`PassRole` lets the holder become anything.
+These are the two policies the deployment worked with. They were found by iterating against the
+real code on 2026-11-18. Both use the variables exported at the top of this page.
 
 Never attach an administrator policy.
 
-`<BOUNDARY_ARN>` is the policy `<PROJECT_TAG>-task-boundary`. Terraform looks it
-up by that name through the variable `permissions_boundary_name` in
-`infra/variables.tf`, whose default is `aidlc-demo-task-boundary`. Terraform
-attaches it to the one role it creates, `<PROJECT_TAG>-task-execution`. The
-boundary must allow at least the actions in AWS's managed
-`AmazonECSTaskExecutionRolePolicy`: ECR pull and log writes.
+### 4a. Permissions boundary
 
-**Every API the deployment calls** is listed in
+This boundary caps every role the deploy role creates. Terraform attaches it to
+the one role it makes, `${PROJECT}-task-execution`, by looking it up by name. The
+name comes from `permissions_boundary_name` in `infra/variables.tf`, whose default
+is `aidlc-demo-task-boundary`. The boundary allows exactly what AWS's managed
+`AmazonECSTaskExecutionRolePolicy` needs: pulling from ECR and writing logs.
+
+```bash
+cat > /tmp/boundary.json <<'EOF2'
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ecr:GetAuthorizationToken",
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:BatchGetImage",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+EOF2
+
+aws iam create-policy --policy-name "${PROJECT}-task-boundary" \
+  --policy-document file:///tmp/boundary.json \
+  --description "Permissions boundary for roles created by the deploy role" \
+  --tags Key=project,Value="$PROJECT"
+export BOUNDARY_ARN="arn:aws:iam::${ACCOUNT_ID}:policy/${PROJECT}-task-boundary"
+```
+
+### 4b. Deploy policy
+
+The deploy policy is scoped by service and by name prefix. The heredoc below is
+unquoted, so the shell fills in `${BUCKET}`, `${ACCOUNT_ID}`, `${AWS_REGION}`
+and `${PROJECT}`.
+
+```bash
+cat > /tmp/deploy-policy.json <<EOF2
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "TerraformState",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject"
+      ],
+      "Resource": "arn:aws:s3:::${BUCKET}/${PROJECT}/*"
+    },
+    {
+      "Sid": "TerraformStateList",
+      "Effect": "Allow",
+      "Action": [
+        "s3:ListBucket",
+        "s3:GetBucketLocation"
+      ],
+      "Resource": "arn:aws:s3:::${BUCKET}"
+    },
+    {
+      "Sid": "ReadOnlyDiscovery",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:Describe*",
+        "ecs:Describe*",
+        "ecs:List*",
+        "ecr:Describe*",
+        "ecr:GetAuthorizationToken",
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:GetRepositoryPolicy",
+        "ecr:ListTagsForResource",
+        "logs:Describe*",
+        "logs:ListTagsForResource",
+        "iam:GetRole",
+        "iam:ListRolePolicies",
+        "iam:ListAttachedRolePolicies",
+        "iam:ListInstanceProfilesForRole",
+        "sts:GetCallerIdentity"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "EcrManage",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:CreateRepository",
+        "ecr:DeleteRepository",
+        "ecr:TagResource",
+        "ecr:UntagResource",
+        "ecr:PutLifecyclePolicy",
+        "ecr:PutImageTagMutability",
+        "ecr:SetRepositoryPolicy",
+        "ecr:InitiateLayerUpload",
+        "ecr:UploadLayerPart",
+        "ecr:CompleteLayerUpload",
+        "ecr:PutImage",
+        "ecr:BatchDeleteImage",
+        "ecr:BatchGetImage",
+        "ecr:GetDownloadUrlForLayer"
+      ],
+      "Resource": "arn:aws:ecr:${AWS_REGION}:${ACCOUNT_ID}:repository/${PROJECT}*"
+    },
+    {
+      "Sid": "EcsManage",
+      "Effect": "Allow",
+      "Action": [
+        "ecs:CreateCluster",
+        "ecs:DeleteCluster",
+        "ecs:CreateService",
+        "ecs:UpdateService",
+        "ecs:DeleteService",
+        "ecs:TagResource",
+        "ecs:UntagResource",
+        "ecs:RegisterTaskDefinition",
+        "ecs:DeregisterTaskDefinition"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "NetworkingBuild",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:CreateVpc",
+        "ec2:DeleteVpc",
+        "ec2:ModifyVpcAttribute",
+        "ec2:CreateSubnet",
+        "ec2:DeleteSubnet",
+        "ec2:ModifySubnetAttribute",
+        "ec2:CreateInternetGateway",
+        "ec2:DeleteInternetGateway",
+        "ec2:AttachInternetGateway",
+        "ec2:DetachInternetGateway",
+        "ec2:CreateRouteTable",
+        "ec2:DeleteRouteTable",
+        "ec2:CreateRoute",
+        "ec2:DeleteRoute",
+        "ec2:AssociateRouteTable",
+        "ec2:DisassociateRouteTable",
+        "ec2:CreateSecurityGroup",
+        "ec2:DeleteSecurityGroup",
+        "ec2:AuthorizeSecurityGroupIngress",
+        "ec2:AuthorizeSecurityGroupEgress",
+        "ec2:RevokeSecurityGroupIngress",
+        "ec2:RevokeSecurityGroupEgress",
+        "ec2:CreateTags",
+        "ec2:DeleteTags"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "LogGroups",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:DeleteLogGroup",
+        "logs:PutRetentionPolicy",
+        "logs:TagResource",
+        "logs:UntagResource"
+      ],
+      "Resource": "arn:aws:logs:${AWS_REGION}:${ACCOUNT_ID}:log-group:/${PROJECT}*"
+    },
+    {
+      "Sid": "TaskRolesWithinBoundary",
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateRole",
+        "iam:DeleteRole",
+        "iam:AttachRolePolicy",
+        "iam:DetachRolePolicy",
+        "iam:PutRolePolicy",
+        "iam:DeleteRolePolicy"
+      ],
+      "Resource": "arn:aws:iam::${ACCOUNT_ID}:role/${PROJECT}-task-*",
+      "Condition": {
+        "StringEquals": {
+          "iam:PermissionsBoundary": "arn:aws:iam::${ACCOUNT_ID}:policy/${PROJECT}-task-boundary"
+        }
+      }
+    },
+    {
+      "Sid": "TagTaskRolesProjectTagOnly",
+      "Effect": "Allow",
+      "Action": [
+        "iam:TagRole",
+        "iam:UntagRole"
+      ],
+      "Resource": "arn:aws:iam::${ACCOUNT_ID}:role/${PROJECT}-task-*",
+      "Condition": {
+        "ForAllValues:StringEquals": {
+          "aws:TagKeys": [
+            "project"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "PassOnlyTaskRolesToEcs",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": "arn:aws:iam::${ACCOUNT_ID}:role/${PROJECT}-task-*",
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": "ecs-tasks.amazonaws.com"
+        }
+      }
+    },
+    {
+      "Sid": "TeardownTaskDefinitions",
+      "Effect": "Allow",
+      "Action": "ecs:DeleteTaskDefinitions",
+      "Resource": "arn:aws:ecs:${AWS_REGION}:${ACCOUNT_ID}:task-definition/${PROJECT}:*"
+    },
+    {
+      "Sid": "TeardownTagQuery",
+      "Effect": "Allow",
+      "Action": "tag:GetResources",
+      "Resource": "*"
+    }
+  ]
+}
+EOF2
+
+aws iam create-policy --policy-name "${PROJECT}-deploy" \
+  --policy-document file:///tmp/deploy-policy.json \
+  --tags Key=project,Value="$PROJECT"
+export POLICY_ARN="arn:aws:iam::${ACCOUNT_ID}:policy/${PROJECT}-deploy"
+aws iam attach-role-policy --role-name "$ROLE_NAME" --policy-arn "$POLICY_ARN"
+```
+
+What the IAM statements are for:
+
+- **`TaskRolesWithinBoundary`**: the deploy role can only create or change
+  `${PROJECT}-task-*` roles that carry the boundary. Without that condition, a
+  role that can create roles can create one more privileged than itself.
+- **`TagTaskRolesProjectTagOnly`**: `iam:TagRole` and `iam:UntagRole` are in
+  their own statement because the AWS Service Authorization Reference does not
+  list `iam:PermissionsBoundary` as a condition key for them. Under `StringEquals`
+  a missing key never matches, so they could never be allowed in the boundary
+  statement. `CreateRole` with tags also needs `iam:TagRole`, and
+  `default_tags` always sends tags. Only the `project` tag key is allowed.
+- **`PassOnlyTaskRolesToEcs`**: without the `PassedToService` condition, an
+  unconstrained `PassRole` lets the holder become anything.
+- **`TeardownTaskDefinitions` and `TeardownTagQuery`**: used by `destroy.yml`
+  to delete deregistered task definitions and to run the final tag query.
+- **`ecr:BatchGetImage` and `ecr:GetDownloadUrlForLayer`**: `docker push`
+  checks the uploaded manifest with a `HEAD` request, which needs them.
+
+Every API the deployment calls is listed in
 `aidlc-docs/construction/reference-deployment/infrastructure-design/infrastructure-design.md`,
-section 4. Check the policy against that list before the first deploy.
+section 4. If the code changes, Terraform reports each missing action as an
+`AccessDenied` naming the API. Add the action with `aws iam create-policy-version
+--set-as-default`. This keeps the previous version available for rollback, and
+policies hold at most 5 versions.
 
-> **Known gap: tagging.** The AWS Service Authorization Reference lists
-> `iam:PermissionsBoundary` as a condition key for `CreateRole`, `DeleteRole`,
-> `AttachRolePolicy`, `DetachRolePolicy`, `PutRolePolicy` and `DeleteRolePolicy`,
-> but **not** for `iam:TagRole` or `iam:UntagRole`. A missing key fails
-> `StringEquals`, so the statement above denies tagging. `CreateRole` with tags,
-> which `default_tags` always sends, also needs `iam:TagRole`, so the first apply
-> fails. Move `iam:TagRole` and `iam:UntagRole` into their own statement, with the
-> same `<PROJECT_TAG>-task-*` resource and no boundary condition.
->
-> The teardown steps also need these, which the API list includes:
-> - `ecs:DeleteTaskDefinitions` on `task-definition/<PROJECT_TAG>:*`
-> - `tag:GetResources`
-
-- [ ] Policy attached, and both conditions present
-- [ ] Policy checked against the API list in the infrastructure design
+- [ ] Boundary policy created
+- [ ] Deploy policy created and attached to the deploy role
 
 ## 5. GitHub repository
 
@@ -283,10 +495,18 @@ that distinguishes a scoped policy from an administrator policy.
 Nothing here is created by Terraform. No `destroy` removes any of it.
 
 ```bash
-aws iam detach-role-policy --role-name "$ROLE_NAME" --policy-arn <POLICY_ARN>
+aws iam detach-role-policy --role-name "$ROLE_NAME" --policy-arn "$POLICY_ARN"
 aws iam delete-role --role-name "$ROLE_NAME"
-aws iam delete-policy --policy-arn <POLICY_ARN>
-aws iam delete-policy --policy-arn <BOUNDARY_ARN>
+
+# A policy with extra versions cannot be deleted, so remove the non-default
+# versions first
+for arn in "$POLICY_ARN" "$BOUNDARY_ARN"; do
+  for v in $(aws iam list-policy-versions --policy-arn "$arn" \
+      --query 'Versions[?!IsDefaultVersion].VersionId' --output text); do
+    aws iam delete-policy-version --policy-arn "$arn" --version-id "$v"
+  done
+  aws iam delete-policy --policy-arn "$arn"
+done
 aws iam delete-open-id-connect-provider --open-id-connect-provider-arn "$OIDC_ARN"
 
 # Versioning retains objects after a plain delete, so clear all versions first

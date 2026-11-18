@@ -285,3 +285,24 @@ Hello from aidlc-demo: deployed through GitHub Actions by an AI-DLC workflow."
 **Context**: Post-AI-DLC; deployment live
 
 ---
+## Post-workflow - Architecture Diagram and Presentation
+**Timestamp**: 2026-11-18T17:38:35Z
+**User Input**: "i still need an architectural diagram and an html presentation that breaks down the full process with screenshots of the aidlc process/conversation to speak to the individual components" ; "option 1, but just to be clear, aidlc.txt still exists from the latest export" ; "i dont need emojis"
+**AI Response**: "Created docs/presentation/: architecture diagram (src/architecture.svg using AWS Architecture Icons 2026-07-31 release, built to self-contained assets/architecture.svg and PNG), 20 terminal-style renderings of key session moments (verbatim text from aidlc.txt up to 15:24 UTC and from the session transcript after; labelled as renderings, emoji removed, account ids/home paths/e-mail redacted), and a 22-slide offline HTML deck (index.html) with speaker notes. Generators in docs/presentation/tools/. Not committed: awaiting the user's decision on publishing to the public repository."
+**Context**: Post-AI-DLC deliverables
+
+---
+## Post-workflow - Presentation Kept Out of the Repository
+**Timestamp**: 2026-11-18T17:50:03Z
+**User Input**: "i dont want any presentation files in the public repo. save them to a new dir in my aws vault"
+**AI Response**: "Moved the presentation (deck, architecture diagram, renderings, generator scripts) out of the repository into a new folder in the operator's local notes vault, outside version control. Generator scripts updated to take the repository path as an argument; rebuilt and verified from the new location. No presentation files remain in the repository."
+**Context**: Post-AI-DLC deliverables
+
+---
+## Post-workflow - Template Examples and Prerequisite Steps
+**Timestamp**: 2026-11-18T17:54:52Z
+**User Input**: "i dont think we need to keep an audit.md file at all. update the local-values.template.md with example names/values" ; "it should also have the step by step instructions for deploying those resources unless thats specified somewhere else" ; "ok, keep audit and commit it"
+**AI Response**: "Kept audit.md at the user's direction after noting it backs success criterion 1. local-values.template.md: example values for every field (account id kept as a placeholder because the PR check rejects 12-digit numbers) and an 'Order of work' section pointing to the existing step-by-step docs. docs/prerequisites.md section 4: added copy-paste commands to create the boundary and the full working deploy policy (v3 shape, parameterised), statement rationale; Removal now deletes non-default policy versions before deleting policies."
+**Context**: Post-AI-DLC documentation
+
+---
