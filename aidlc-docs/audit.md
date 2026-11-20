@@ -313,3 +313,10 @@ Hello from aidlc-demo: deployed through GitHub Actions by an AI-DLC workflow."
 **Context**: Post-AI-DLC live verification (complements L2.4)
 
 ---
+## Post-workflow - Teardown After the Demo (Terraform-managed)
+**Timestamp**: 2026-11-20T18:03:58Z
+**User Input**: "tear down the deployment" ; "keep for now"
+**AI Response**: "Destroy run https://github.com/avanbecelaere/aidlc-reference-deployment/actions/runs/44788066022 succeeded in 1m49s: 17 resources destroyed, inactive task definitions deleted, 'terraform plan -destroy -detailed-exitcode' reported No changes. Independent read-only verification not yet run: the operator's AWS SSO session had expired. Hand-made resources (deploy role, aidlc-demo-deploy v1-v3, aidlc-demo-task-boundary, state bucket, OIDC provider, repo variables and OPERATOR_CIDR secret) kept at the user's direction; removal per docs/prerequisites.md, Removal, remains outstanding, so success criterion 5 is met for Terraform-managed resources only."
+**Context**: Post-AI-DLC teardown
+
+---
