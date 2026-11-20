@@ -101,6 +101,10 @@ terraform {
 
 ## 2. OIDC identity provider
 
+> New to this, or debugging a failure? `docs/github-oidc-setup.md` explains how
+> the trust works, why a wildcard on the subject does not rescue a mismatch, and
+> what each failure message actually means.
+
 ```bash
 aws iam create-open-id-connect-provider \
   --url https://token.actions.githubusercontent.com \

@@ -15,6 +15,7 @@ about it competes for attention with the workflow that produced it.
 |---|---|
 | `docs/vision.md` | What is being built, why it is this small, and what success means. This is the input the AI-DLC run consumes. |
 | `docs/running-aidlc-v1.md` | How to run AI-DLC v1 without it silently failing. Read before the first prompt. |
+| `docs/github-oidc-setup.md` | Federating GitHub Actions into an AWS account with no stored keys: how the trust works, and the two places it goes wrong. |
 | `docs/prerequisites.md` | The two things created by hand, outside this repository, before any Terraform is applied. |
 | `docs/deploy.md` | Deploying through GitHub Actions, reading the service address, tearing down, and troubleshooting. |
 | `local-values.template.md` | Copy to `local-values.md` and record your own account, repository and resource names. That filename is gitignored. |
