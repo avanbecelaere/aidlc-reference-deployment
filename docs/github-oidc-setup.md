@@ -23,23 +23,17 @@ leak, or forget about.
 
 ## 2. How the trust actually works
 
-Three parties and four steps.
+Three parties and five steps.
 
-```
-  GitHub Actions job                AWS STS                  IAM
-         |                             |                      |
-  1. ask GitHub for a token            |                      |
-     (needs id-token: write)           |                      |
-         |                             |                      |
-  2. AssumeRoleWithWebIdentity ------->|                      |
-         |                             |  3. verify signature |
-         |                             |     against the      |
-         |                             |     identity provider|
-         |                             |                      |
-         |                             |  4. check the role's |
-         |                             |     trust policy     |
-         |<--- temporary credentials --|      conditions      |
-```
+![How a GitHub Actions job assumes an AWS role through OpenID Connect. The job
+requests a short-lived signed token from GitHub, which requires the id-token
+write permission. It presents that token together with the role ARN to AWS STS by
+calling AssumeRoleWithWebIdentity. STS verifies the signature against the IAM
+OIDC identity provider in your account, then checks the token's audience and
+subject claims against the role's trust policy. If both match, STS returns
+temporary credentials to the job. No access key exists on either side, and the
+trust policy is the only step that knows which repository you
+trust.](images/github-oidc-flow.svg)
 
 The token is a JWT whose claims describe the run: which repository, which branch
 or tag, which workflow, which event. AWS verifies the signature, then checks
